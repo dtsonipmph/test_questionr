@@ -346,7 +346,7 @@ icut <- function(obj = NULL, var_name = NULL) {
           cat(out)
           }
           stopApp()
-        })
+        )
 
         # Handle the Cancel button being pressed.
         observeEvent(input$cancel, { 
