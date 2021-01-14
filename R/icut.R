@@ -27,10 +27,6 @@
 
 
 icut <- function(obj = NULL, var_name = NULL) {
-  
-  # Deactivate styler cache to avoid blocking message at
-  # first launch
-  styler::cache_deactivate(verbose = FALSE)
 
       run_as_addin <- ifunc_run_as_addin()
 
@@ -48,7 +44,7 @@ icut <- function(obj = NULL, var_name = NULL) {
         if (is.character(obj) && length(obj) == 1) {
           obj_name <- obj
           try({
-            obj <- get(obj_name, envir = .GlobalEnv)
+            obj <- get(obj_name, envir = sys.parent())
           }, silent = TRUE)
         }
         else {
@@ -60,7 +56,7 @@ icut <- function(obj = NULL, var_name = NULL) {
           obj_name <- gsub("^\\s*", "", s[[1]][1])
           var_name <- gsub("\\s*$", "", s[[1]][2])
           var_name <- gsub("`", "", var_name)
-          obj <- get(obj_name, envir = .GlobalEnv)          
+          obj <- get(obj_name, envir = sys.parent())          
         }
         if (inherits(obj, "tbl_df") || inherits(obj, "data.table")) obj <- as.data.frame(obj)
 
@@ -114,8 +110,8 @@ icut <- function(obj = NULL, var_name = NULL) {
                            gettext("Data frame or vector to recode from", domain="R-questionr"),
                            choices = Filter(
                              function(x) {
-                               inherits(get(x, envir = .GlobalEnv), "data.frame") ||
-                                 is.numeric(get(x, envir = .GlobalEnv))
+                               inherits(get(x, envir = sys.parent()), "data.frame") ||
+                                 is.numeric(get(x, envir = sys.parent()))
                              }, ls(.GlobalEnv)),
                            selected = obj_name, multiple = FALSE)),
                   column(6, uiOutput("varInput")))),
@@ -137,10 +133,9 @@ icut <- function(obj = NULL, var_name = NULL) {
                         selectizeInput("cutMethod", gettext('Cutting method',domain='R-questionr'), choices=c("Manual" = "fixed", "Standard deviation" = "sd", "Equal width" = "equal", "Pretty" = "pretty", "Quantile" = "quantile", "K-means" = "kmeans", "Hierarchical cluster" = "hclust", "Bagged clustering" = "bclust", "Fisher algorithm" = "fisher", "Jenks algorithm" = "jenks")),
                         uiOutput("ui"),
                         textInput("breaks", "Breaks"),
-                        checkboxInput("right", HTML(gettext("Right-closed intervals (<tt>right</tt>)", domain="R-questionr")), FALSE),
+                        checkboxInput("right", HTML(gettext("Right-closed intervals (<tt>right</tt>)", domain="R-questionr")), TRUE),
                         checkboxInput("inclowest", HTML(gettext("Include extreme (<tt>include.lowest</tt>)", domain="R-questionr")), FALSE),
-                        checkboxInput("addext", gettext("Append extreme values if necessary", domain="R-questionr"), FALSE),
-                        numericInput("diglab", HTML(gettext("Label digits (<tt>dig.lab</tt>)", domain="R-questionr")), min = 0, max = 10, value = 4)),
+                        checkboxInput("addext", gettext("Append extreme values if necessary", domain="R-questionr"), FALSE)),
                     column(6,
                         wellPanel(plotOutput("histOut")))
 
@@ -313,7 +308,7 @@ icut <- function(obj = NULL, var_name = NULL) {
             if (check) dest_var <- ".icut_tmp"
 
           out <- sprintf(gettextf("## Cutting %s into %s\n", src_var(), dest_var, domain="R-questionr"))
-          out <- paste0(out, sprintf("%s <- cut(%s,\n include.lowest=%s,\n right=%s,\n dig.lab=%s,\n", dest_var, src_var(), input$inclowest, input$right, input$diglab))
+          out <- paste0(out, sprintf("%s <- cut(%s,\n include.lowest=%s,\n right=%s,\n", dest_var, src_var(), input$inclowest, input$right))
           breaks <- paste0(utils::capture.output(dput(get_breaks(input$breaks))), collapse="")
           out <- paste0(out, sprintf("breaks=%s)\n", breaks))
           out
@@ -343,10 +338,18 @@ icut <- function(obj = NULL, var_name = NULL) {
         observeEvent(input$done, {
           ## Generate code
           out <- generate_code()
-          cat(out)
+          out <- styler::style_text(out)
+          out <- paste(out, collapse = "\n")
+          if (run_as_addin) {
+            rstudioapi::insertText(text = out)
+          } else {
+            out <- paste0(
+                          out,
+                          )
+            cat(out)
           }
           stopApp()
-        )
+        })
 
         # Handle the Cancel button being pressed.
         observeEvent(input$cancel, { 

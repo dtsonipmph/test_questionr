@@ -25,18 +25,6 @@
 
 
 iorder <- function(obj = NULL, var_name = NULL) {
-  
-  # Deactivate styler cache to avoid blocking message at
-  # first launch
-  styler::cache_deactivate(verbose = FALSE)
-
-  recoding_styles <- c("factor" = "factor", 
-                       "fct_relevel (forcats)" = "forcats")
-  selected_recoding_style <- "factor"
-  ## If forcats is loaded
-  if (exists("fct_relevel")) {
-    selected_recoding_style <- "forcats"
-  }
 
   run_as_addin <- ifunc_run_as_addin()
 
@@ -54,7 +42,7 @@ iorder <- function(obj = NULL, var_name = NULL) {
     if (is.character(obj) && length(obj) == 1) {
       obj_name <- obj
       try({
-        obj <- get(obj_name, envir = .GlobalEnv)
+        obj <- get(obj_name, envir = sys.parent())
       }, silent = TRUE)
     }
     else {
@@ -66,7 +54,7 @@ iorder <- function(obj = NULL, var_name = NULL) {
       obj_name <- gsub("^\\s*", "", s[[1]][1])
       var_name <- gsub("\\s*$", "", s[[1]][2])
       var_name <- gsub("`", "", var_name)
-      obj <- get(obj_name, envir = .GlobalEnv)      
+      obj <- get(obj_name, envir = sys.parent())      
     }
     if (inherits(obj, "tbl_df") || inherits(obj, "data.table")) obj <- as.data.frame(obj)
 
@@ -129,9 +117,9 @@ iorder <- function(obj = NULL, var_name = NULL) {
                        gettext("Data frame or vector to recode from", domain="R-questionr"),
                        choices = Filter(
                          function(x) {
-                           inherits(get(x, envir = .GlobalEnv), "data.frame") ||
-                             is.vector(get(x, envir = .GlobalEnv)) ||
-                             is.factor(get(x, envir = .GlobalEnv))
+                           inherits(get(x, envir = sys.parent()), "data.frame") ||
+                             is.vector(get(x, envir = sys.parent())) ||
+                             is.factor(get(x, envir = sys.parent()))
                          }, ls(.GlobalEnv)),
                        selected = obj_name, multiple = FALSE)),
               column(6, uiOutput("varInput")))),
@@ -139,13 +127,9 @@ iorder <- function(obj = NULL, var_name = NULL) {
           tags$h4(icon("sliders"), gettext("Recoding settings", domain="R-questionr")),
           wellPanel(
             fluidRow(
-              column(4, uiOutput("newvarInput")),
-              column(4,selectInput("recstyle", gettext("Recoding style", domain="R-questionr"),
-                                   recoding_styles,
-                                   selected = selected_recoding_style)),
+              column(4, uiOutput("newvarInput"))
             )),
-          uiOutput("alreadyexistsAlert"),
-          uiOutput("loadedforcatsAlert")          
+          uiOutput("alreadyexistsAlert")
           )),
 
       ## Second panel : recoding fields, dynamically generated
@@ -210,7 +194,7 @@ iorder <- function(obj = NULL, var_name = NULL) {
       out <- "<ol id='sortable' class='sortable'>"
       ## List of levels
       if (is.factor(rvar())) levs <- levels(rvar())
-      else levs <- sort(stats::na.omit(unique(rvar())))
+      else levs <- stats::na.omit(unique(rvar()))
       ## Generate fields
       for (l in levs) out <- paste0(out,
                                     '<li><span class="glyphicon glyphicon-move"> </span>&nbsp; <span class="level">',
@@ -256,14 +240,6 @@ iorder <- function(obj = NULL, var_name = NULL) {
       }
     })
     
-    output$loadedforcatsAlert <- renderUI({
-      if (input$recstyle == "forcats" && !exists("fct_recode")) {
-        div(class = "alert alert-warning alert-dismissible",
-            HTML('<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>'),
-            HTML(gettext("<strong>Warning :</strong> The <tt>forcats</tt> package must be installed and loaded for the generated code to be run.", domain="R-questionr")))
-      }
-    })    
-    
     output$alreadyexistsAlert <- renderUI({
       exists <- FALSE
       if (is.data.frame(robj()) && req(input$newvar_name) %in% names(robj())) {
@@ -281,20 +257,6 @@ iorder <- function(obj = NULL, var_name = NULL) {
       }
     })
 
-    
-    ## Code generation for base::factor
-    generate_code_factor <- function(dest_var) {
-      newlevels <- paste0(utils::capture.output(dput(input$sortable)), collapse = "\n")
-      sprintf("%s <- factor(%s,\n levels=%s)", dest_var, src_var(), newlevels)
-    }
-    
-    ## Code generation for forcats::fct_relevel
-    generate_code_forcats <- function(dest_var) {
-      newlevels <- paste0(utils::capture.output(dput(input$sortable)), collapse = "\n")
-      newlevels <- gsub("(^c\\(|\\)$)", "", newlevels)
-      sprintf("%s <- fct_relevel(%s,\n %s)", dest_var, src_var(), newlevels)
-    }
-    
     ## Generate reordering code
     generate_code <- function(check=FALSE) {
       if (is.data.frame(robj())) {
@@ -307,17 +269,12 @@ iorder <- function(obj = NULL, var_name = NULL) {
       }
       ## if check, create temporary variable for check table
       if (check) dest_var <- ".iorder_tmp"
-      
+      newlevels <- paste0(utils::capture.output(dput(input$sortable)), collapse = "\n")
       out <- gettextf("## Reordering %s", src_var(), domain = "R-questionr")
       if (src_var() != dest_var) out <- paste0(out, gettextf(" into %s", dest_var, domain="R-questionr"))
-      out <- paste0(out, "\n")
-      
-      ## Invoke recoding code generation function
-      recstyle <- input$recstyle
-      if (recstyle == "factor") out <- paste0(out, generate_code_factor(dest_var))
-      if (recstyle == "forcats") out <- paste0(out, generate_code_forcats(dest_var))
-
-      return(out)
+      out <- paste0(out, sprintf("\n%s <- factor(%s,\n levels=", dest_var, src_var()))
+      out <- paste0(out, newlevels, ')')
+      out
     }
 
     ## Generate the code in the interface
@@ -350,9 +307,9 @@ iorder <- function(obj = NULL, var_name = NULL) {
       if (run_as_addin) {
         rstudioapi::insertText(text = out)
       } else {
-        out <- paste0(gettext("\n-------- Start recoding code --------\n\n", domain="R-questionr"),
+        out <- paste0(
                       out,
-                      gettext("\n--------- End recoding code ---------\n", domain="R-questionr"))
+                     )
         cat(out)
       }
       stopApp()
@@ -367,7 +324,6 @@ iorder <- function(obj = NULL, var_name = NULL) {
     output$tableOut <- renderTable({
       ## Generate the recoding code with a temporary variable
       code <- generate_code(check = TRUE)
-      if (!exists("fct_relevel") && input$recstyle == "forcats") return(NULL)
       ## Eval generated code
       eval(parse(text = code), envir = .GlobalEnv)
       ## Display table
