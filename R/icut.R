@@ -343,8 +343,11 @@ icut <- function(obj = NULL, var_name = NULL) {
         observeEvent(input$done, {
           ## Generate code
           out <- generate_code()
-          out
-
+          if (run_as_addin) {
+            rstudioapi::insertText(text = out)
+          } else {
+            out 
+          }
           stopApp()
         })
 
