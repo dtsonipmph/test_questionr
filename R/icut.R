@@ -344,7 +344,7 @@ icut <- function(obj = NULL, var_name = NULL) {
           ## Generate code
           out <- generate_code()
           out
-          }
+
           stopApp()
         })
 
