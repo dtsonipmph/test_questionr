@@ -367,10 +367,7 @@ icut <- function(obj = NULL, var_name = NULL) {
           tab
         }, rownames = TRUE)
 
-        ## Tạo biến số mới 
-        observe({ 
-robj()[[input$newvar_name]] <- get(".icut_tmp")
-})
+
         ## Generate the barplot
         output$barOut <- renderPlot({
           ## Generate the recoding code with a temporary variable
